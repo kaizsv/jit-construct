@@ -1,6 +1,25 @@
 #include <stdint.h>
 #include "util.h"
 
+int find_simple_loop(char *p)
+{
+	int move = 0;
+	int addPosition = 0;
+	while (1) {
+		if (*++p == '>') {
+			move++;
+		} else if (*p == '<') {
+			move--;
+		} else if (addPosition == 0 && *p == '+') {
+			addPosition = move;
+		} else if (*p == ']') {
+			return (move == 0) ? addPosition : 0;
+		} else {
+			return 0;
+		}
+	}
+}
+
 |.arch x64
 |.actionlist actions
 |
@@ -31,7 +50,7 @@ int main(int argc, char *argv[])
 	unsigned int maxpc = 0;
 	int pcstack[MAX_NESTING];
 	int *top = pcstack, *limit = pcstack + MAX_NESTING;
-	int count;
+	int loopJump = 0;
 
 	// Function prologue.
 	|  push PTR
@@ -40,32 +59,16 @@ int main(int argc, char *argv[])
 	for (char *p = read_file(argv[1]); *p; p++) {
 		switch (*p) {
 		case '>':
-			count = 1;
-			while(*++p == '>')
-				count++;
-			p--;
-			|  add  PTR,count
+			|  inc  PTR
 			break;
 		case '<':
-			count = 1;
-			while(*++p == '<')
-				count++;
-			p--;
-			|  sub  PTR, count
+			|  dec  PTR
 			break;
 		case '+':
-			count = 1;
-			while(*++p == '+')
-				count++;
-			p--;
-			|  add  byte [PTR], count
+			|  inc  byte [PTR]
 			break;
 		case '-':
-			count = 1;
-			while(*++p == '-')
-				count++;
-			p--;
-			|  sub  byte [PTR], count
+			|  dec  byte [PTR]
 			break;
 		case '.':
 			|  movzx edi, byte [PTR]
@@ -80,6 +83,24 @@ int main(int argc, char *argv[])
 			// Each loop gets two pclabels: at the beginning and end.
 			// We store pclabel offsets in a stack to link the loop
 			// begin and end together.
+			if (*(p+1) == '-' && (loopJump = find_simple_loop(p+1)) != 0) {
+				if (loopJump > 0) {
+					| mov al, byte [PTR]
+					| add PTR, loopJump
+					| add byte [PTR], al
+					| sub PTR, loopJump
+					| mov byte [PTR], 0
+				} else {
+					loopJump = -loopJump;
+					| mov al, byte [PTR]
+					| sub PTR, loopJump
+					| add byte [PTR], al
+					| add PTR, loopJump
+					| mov byte [PTR], 0
+				}
+				p += (loopJump << 1) + 3;
+				break;
+			}
 			maxpc += 2;
 			*top++ = maxpc;
 			dasm_growpc(&state, maxpc);
