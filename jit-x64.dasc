@@ -49,6 +49,7 @@ int main(int argc, char *argv[])
 	unsigned int maxpc = 0;
 	int pcstack[MAX_NESTING];
 	int *top = pcstack, *limit = pcstack + MAX_NESTING;
+	int count;
 
 	// Function prologue.
 	|  push PTR
@@ -57,16 +58,32 @@ int main(int argc, char *argv[])
 	for (char *p = read_file(argv[1]); *p; p++) {
 		switch (*p) {
 		case '>':
-			|  inc  PTR
+			count = 1;
+			while(*++p == '>')
+				count++;
+			p--;
+			|  add  PTR,count
 			break;
 		case '<':
-			|  dec  PTR
+			count = 1;
+			while(*++p == '<')
+				count++;
+			p--;
+			|  sub  PTR, count
 			break;
 		case '+':
-			|  inc  byte [PTR]
+			count = 1;
+			while(*++p == '+')
+				count++;
+			p--;
+			|  add  byte [PTR], count
 			break;
 		case '-':
-			|  dec  byte [PTR]
+			count = 1;
+			while(*++p == '-')
+				count++;
+			p--;
+			|  sub  byte [PTR], count
 			break;
 		case '.':
 			|  movzx edi, byte [PTR]
@@ -81,7 +98,11 @@ int main(int argc, char *argv[])
 			// Each loop gets two pclabels: at the beginning and end.
 			// We store pclabel offsets in a stack to link the loop
 			// begin and end together.
-			if (*(p+1) == '-' && find_simple_loop(p+1) > 0) {
+			if (*(p+1) == '-' && *(p+2) == ']') {
+				p += 2;
+				| mov byte [PTR], 0
+				break;
+			} else if (*(p+1) == '-' && find_simple_loop(p+1) > 0) {
 				int addCount = 0;
 				int move = 0;
 				p++;
@@ -109,14 +130,14 @@ int main(int argc, char *argv[])
 							move = 0;
 						}
 					} else {
+						if (move > 0) {
+							| add PTR, move
+						} else {
+							move = -move;
+							| sub PTR, move
+						}
 						break;
 					}
-				}
-				if (move > 0) {
-					| add PTR, move
-				} else {
-					move = -move;
-					| sub PTR, move
 				}
 				break;
 			}
