@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #include "util.h"
 
 int find_simple_loop(char *p)
@@ -13,7 +14,7 @@ int find_simple_loop(char *p)
 			continue;
 		} else if (*p == ']') {
 			return (move == 0) ? 1 : 0;
-		} else {
+		} else if (*p == ',' || *p == '.' || *p == '-' || *p == '[') {
 			return 0;
 		}
 	}
@@ -46,6 +47,7 @@ int main(int argc, char *argv[])
 	dasm_State *state;
 	initjit(&state, actions);
 
+	char exbf[7];
 	unsigned int maxpc = 0;
 	int pcstack[MAX_NESTING];
 	int *top = pcstack, *limit = pcstack + MAX_NESTING;
@@ -59,29 +61,33 @@ int main(int argc, char *argv[])
 		switch (*p) {
 		case '>':
 			count = 1;
-			while(*++p == '>')
-				count++;
+			strcpy(exbf, "<+-.,[]");
+			while(strchr(exbf, *++p) == 0)
+				count = *p == '>' ? count + 1 : count;
 			p--;
 			|  add  PTR,count
 			break;
 		case '<':
 			count = 1;
-			while(*++p == '<')
-				count++;
+			strcpy(exbf, ">+-.,[]");
+			while(strchr(exbf, *++p) == 0)
+				count = *p == '<' ? count + 1 : count;
 			p--;
 			|  sub  PTR, count
 			break;
 		case '+':
 			count = 1;
-			while(*++p == '+')
-				count++;
+			strcpy(exbf, "><-.,[]");
+			while(strchr(exbf, *++p) == 0)
+				count = *p == '+' ? count + 1 : count;
 			p--;
 			|  add  byte [PTR], count
 			break;
 		case '-':
 			count = 1;
-			while(*++p == '-')
-				count++;
+			strcpy(exbf, "><+.,[]");
+			while(strchr(exbf, *++p) == 0)
+				count = *p == '-' ? count + 1 : count;
 			p--;
 			|  sub  byte [PTR], count
 			break;
@@ -106,7 +112,7 @@ int main(int argc, char *argv[])
 				int addCount = 0;
 				int move = 0;
 				p++;
-				| mov r8b, byte [PTR]
+				| mov dl, byte [PTR]
 				| mov byte [PTR], 0
 				while (1) {
 					if (*++p == '>') {
@@ -118,18 +124,18 @@ int main(int argc, char *argv[])
 						if (*(p+1) != '+') {
 							if (move > 0) {
 								| add PTR, move
-								| imul r9d, r8d, addCount
-								| add byte [PTR], r9b
+								| imul ecx, edx, addCount
+								| add byte [PTR], cl
 							} else {
 								move = -move;
 								| sub PTR, move
-								| imul r9d, r8d, addCount
-								| add byte [PTR], r9b
+								| imul ecx, edx, addCount
+								| add byte [PTR], cl
 							}
 							addCount = 0;
 							move = 0;
 						}
-					} else {
+					} else if (*p == ']'){
 						if (move > 0) {
 							| add PTR, move
 						} else {
@@ -169,3 +175,4 @@ int main(int argc, char *argv[])
 	free_jitcode(fptr);
 	return 0;
 }
+
